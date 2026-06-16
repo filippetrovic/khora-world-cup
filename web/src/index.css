@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-pitch-950 text-pitch-50 antialiased;
+  margin: 0;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Subtle stadium-pitch backdrop: a soft vertical sheen + faint stripe texture. */
+.app-bg {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(233, 171, 45, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(27, 166, 92, 0.18), transparent 55%),
+    linear-gradient(180deg, #073021 0%, #042617 55%, #021a10 100%);
+}
+
+.pitch-stripes {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0px,
+    rgba(255, 255, 255, 0.02) 2px,
+    transparent 2px,
+    transparent 64px
+  );
+}
+
+/* Thin custom scrollbars inside panels. */
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  @apply bg-pitch-700/60 rounded-full;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

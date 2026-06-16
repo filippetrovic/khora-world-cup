@@ -1,0 +1,238 @@
+name: worldcup2026
+version: "1.0.0"
+description: >-
+  Domain expertise for the 2026 FIFA World Cup (hosted by USA, Canada and
+  Mexico). Extracts national teams, players, coaches, matches with scorelines,
+  groups, knockout stages, stadiums, host cities and referees from news
+  articles and match summaries, and links them into a football knowledge graph.
+
+system_prompt: >-
+  You are a football (soccer) domain expert processing content about the 2026
+  FIFA World Cup, jointly hosted by the United States, Canada and Mexico. The
+  content you receive is a mix of NEWS ARTICLES (previews, reports, transfer and
+  squad news) and MATCH SUMMARIES (factual results with scorelines and
+  scorers).
+
+  Extract the following entities:
+    - TEAM: national teams that compete (e.g. "Argentina", "France", "USA").
+      Always normalize to the country / national-team name; never include the
+      word "national team" in the name. Treat "USMNT" as "USA", "Les Bleus" as
+      "France", etc.
+    - PLAYER: footballers. Normalize to the player's full common name (e.g.
+      "Lionel Messi", "Kylian Mbappe"); strip honorifics and shirt numbers.
+    - COACH: head coaches / managers of national teams.
+    - MATCH: individual fixtures. Capture the scoreline (e.g. "Canada 1 - 0
+      Mexico") and the two teams involved. A match title should identify both
+      teams.
+    - GROUP: group-stage groups (e.g. "Group A" ... "Group L").
+    - STAGE: tournament phases ("Group Stage", "Round of 32", "Round of 16",
+      "Quarter-final", "Semi-final", "Final").
+    - STADIUM: venues (e.g. "MetLife Stadium", "Estadio Azteca").
+    - CITY: host cities (e.g. "New York/New Jersey", "Mexico City", "Toronto").
+    - REFEREE: match officials.
+
+  Rules:
+    - For every match result, create DEFEATED(winner -> loser) when there is a
+      winner, or DREW_WITH between the two teams when the match is drawn.
+    - Record goals as SCORED_IN(player -> match) and capture the minute in the
+      relationship's "minute" property when available (e.g. "Jonathan David 30'"
+      => minute 30).
+    - Link players to their national team with PLAYS_FOR, coaches with COACHES,
+      teams to the matches they appear in with PLAYED_IN, teams to their group
+      with BELONGS_TO_GROUP, and teams advancing through the bracket with
+      ADVANCED_TO.
+    - Link matches to their stadium with PLAYED_AT, stadiums to their city with
+      LOCATED_IN, and referees to the matches they officiate with OFFICIATED.
+    - Be conservative: only extract entities and relationships explicitly
+      supported by the text. Do not invent scorelines, minutes or squads.
+
+extraction_prompt: >-
+  Extract World Cup 2026 entities (TEAM, PLAYER, COACH, MATCH, GROUP, STAGE,
+  STADIUM, CITY, REFEREE) and the relationships between them. Normalize team and
+  player names to their canonical common form. For match results, emit DEFEATED
+  or DREW_WITH between the teams and SCORED_IN edges (with minute) for each goal.
+
+entity_types:
+  - name: TEAM
+    description: >-
+      A national team competing at the 2026 FIFA World Cup. Identified by the
+      country name; normalize away phrases like "national team".
+    attributes:
+      required: [name]
+      optional: [group, fifa_ranking, confederation, nickname]
+    identifiers: [name]
+    aliases: [NATIONAL_TEAM, COUNTRY, SQUAD]
+
+  - name: PLAYER
+    description: >-
+      A footballer participating in the tournament. Normalize to the player's
+      common full name.
+    attributes:
+      required: [name]
+      optional: [position, team, shirt_number, age]
+    identifiers: [name]
+    aliases: [FOOTBALLER, ATHLETE]
+
+  - name: COACH
+    description: The head coach / manager of a national team.
+    attributes:
+      required: [name]
+      optional: [team, nationality]
+    identifiers: [name]
+    aliases: [MANAGER, HEAD_COACH]
+
+  - name: MATCH
+    description: >-
+      A single fixture between two national teams, including its scoreline and
+      the stage it belongs to.
+    attributes:
+      required: [name]
+      optional: [home_team, away_team, score, stage, group, date, status]
+    identifiers: [name]
+    aliases: [FIXTURE, GAME]
+
+  - name: GROUP
+    description: A group-stage pool of teams (Group A through Group L).
+    attributes:
+      required: [name]
+      optional: [teams]
+    identifiers: [name]
+    aliases: [POOL]
+
+  - name: STAGE
+    description: >-
+      A phase of the tournament such as the Group Stage, Round of 32, Round of
+      16, Quarter-final, Semi-final or Final.
+    attributes:
+      required: [name]
+      optional: [order]
+    identifiers: [name]
+    aliases: [ROUND, PHASE]
+
+  - name: STADIUM
+    description: A venue hosting World Cup matches.
+    attributes:
+      required: [name]
+      optional: [city, capacity, country]
+    identifiers: [name]
+    aliases: [VENUE, ARENA]
+
+  - name: CITY
+    description: A host city of the 2026 World Cup.
+    attributes:
+      required: [name]
+      optional: [country, region]
+    identifiers: [name]
+    aliases: [HOST_CITY]
+
+  - name: REFEREE
+    description: A match official (referee) for a fixture.
+    attributes:
+      required: [name]
+      optional: [nationality, role]
+    identifiers: [name]
+    aliases: [OFFICIAL, MATCH_OFFICIAL]
+
+relationship_types:
+  - name: PLAYS_FOR
+    description: A player represents a national team.
+    source_types: [PLAYER]
+    target_types: [TEAM]
+    bidirectional: false
+    properties: [position, shirt_number]
+
+  - name: COACHES
+    description: A coach manages a national team.
+    source_types: [COACH]
+    target_types: [TEAM]
+    bidirectional: false
+    properties: []
+
+  - name: SCORED_IN
+    description: A player scored a goal in a match; minute captures when.
+    source_types: [PLAYER]
+    target_types: [MATCH]
+    bidirectional: false
+    properties: [minute, assist]
+
+  - name: PLAYED_IN
+    description: A team participated in a match.
+    source_types: [TEAM]
+    target_types: [MATCH]
+    bidirectional: false
+    properties: [home_away]
+
+  - name: DEFEATED
+    description: >-
+      The source team beat the target team in a match; score holds the final
+      scoreline and stage holds the tournament phase.
+    source_types: [TEAM]
+    target_types: [TEAM]
+    bidirectional: false
+    properties: [score, stage]
+
+  - name: DREW_WITH
+    description: Two teams drew their match.
+    source_types: [TEAM]
+    target_types: [TEAM]
+    bidirectional: true
+    properties: [score, stage]
+
+  - name: BELONGS_TO_GROUP
+    description: A team is drawn into a group-stage group.
+    source_types: [TEAM]
+    target_types: [GROUP]
+    bidirectional: false
+    properties: []
+
+  - name: PLAYED_AT
+    description: A match was played at a stadium.
+    source_types: [MATCH]
+    target_types: [STADIUM]
+    bidirectional: false
+    properties: []
+
+  - name: LOCATED_IN
+    description: A stadium is located in a host city.
+    source_types: [STADIUM]
+    target_types: [CITY]
+    bidirectional: false
+    properties: []
+
+  - name: ADVANCED_TO
+    description: A team advanced to a knockout stage.
+    source_types: [TEAM]
+    target_types: [STAGE]
+    bidirectional: false
+    properties: []
+
+  - name: OFFICIATED
+    description: A referee officiated a match.
+    source_types: [REFEREE]
+    target_types: [MATCH]
+    bidirectional: false
+    properties: [role]
+
+correlation_rules:
+  - name: unify_player_by_name
+    description: >-
+      Treat PLAYER mentions that share the same normalized name as the same
+      footballer across articles and match summaries.
+    match_fields: [name]
+    entity_types: [PLAYER]
+    creates_relationship: null
+    confidence: 0.9
+
+  - name: unify_team_by_name
+    description: >-
+      Treat TEAM mentions that share the same country name as the same national
+      team across all documents.
+    match_fields: [name]
+    entity_types: [TEAM]
+    creates_relationship: null
+    confidence: 0.95
+
+metadata:
+  domain: football
+  competition: "FIFA World Cup 2026"
+  hosts: [USA, Canada, Mexico]

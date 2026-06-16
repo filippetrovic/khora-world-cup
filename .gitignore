@@ -1,0 +1,30 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv / venv
+.venv/
+
+# khora embedded store + ingestion data (local, regenerable)
+data/
+*.sqlite
+*.sqlite-*
+*.lance/
+.lancedb/
+
+# IDE / OS
+.idea/
+.DS_Store
+
+# Node / frontend build
+node_modules/
+web/dist/
