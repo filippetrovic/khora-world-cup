@@ -35,7 +35,15 @@ def main() -> int:
         "--limit",
         type=int,
         default=60,
-        help="Max NEW docs to write this run (cost control). 0 = no cap.",
+        help="Run-wide max NEW docs to write this run (cost control). 0 = no cap.",
+    )
+    parser.add_argument(
+        "--per-window-limit",
+        type=int,
+        default=0,
+        help="Per-group cap: max docs from EACH group (the recent group and "
+        "every weekly backfill window) so recent news can't starve older "
+        "windows. 0 = no per-window cap. Use with --mode all to span a month.",
     )
     parser.add_argument(
         "--full",
@@ -59,12 +67,19 @@ def main() -> int:
     )
 
     limit = None if args.limit == 0 else args.limit
-    counts = run(mode=args.mode, limit=limit, full=args.full)
+    per_window_limit = None if args.per_window_limit == 0 else args.per_window_limit
+    counts = run(
+        mode=args.mode,
+        limit=limit,
+        per_window_limit=per_window_limit,
+        full=args.full,
+    )
 
-    print(f"\nNews fetch ({args.mode}, limit={limit}):")
+    print(f"\nNews fetch ({args.mode}, limit={limit}, per_window={per_window_limit}):")
     print(f"  written      = {counts['written']}")
     print(f"  skipped      = {counts['skipped']} (already seen)")
     print(f"  filtered_out = {counts['filtered_out']} (non-WC / empty)")
+    print(f"  enriched     = {counts.get('enriched', 0)} (thin body -> full article)")
     print(f"  total_seen   = {counts['total_seen']}")
 
     examples = counts.get("examples") or []

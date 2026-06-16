@@ -98,14 +98,27 @@ def _is_title_echo(title: str, body: str) -> bool:
 
     Google News RSS bodies are just ``"<title> <publisher>"`` — they carry no
     information beyond the headline, so the body's alphanumerics are a subset of
-    the title's. Such bodies make the content a useless triple-repeat, so the
-    caller folds them down to a title-only doc.
+    the title's (or the title plus a short publisher tag). Such bodies make the
+    content a useless triple-repeat, so the caller folds them down to a
+    title-only doc.
+
+    A genuine article often *opens* with its own headline and then continues for
+    paragraphs, so the title's letters can be a substring of a long body — that
+    is NOT an echo. We therefore only treat a body that *contains* the title as
+    an echo when the body adds almost nothing beyond it (e.g. just a publisher
+    name), measured against ``MIN_BODY_CHARS`` of extra material.
     """
     body_letters = _normalize_letters(body)
     title_letters = _normalize_letters(title)
     if not body_letters:
         return True
-    return body_letters in title_letters or title_letters in body_letters
+    # Body is a subset of the title (shorter restatement) -> echo.
+    if body_letters in title_letters:
+        return True
+    # Body contains the whole title but is otherwise substantial -> real prose.
+    if title_letters in body_letters:
+        return len(body_letters) - len(title_letters) < MIN_BODY_CHARS
+    return False
 
 
 def article_to_doc(a: Article, *, assume_relevant: bool = False) -> RememberDoc | None:
