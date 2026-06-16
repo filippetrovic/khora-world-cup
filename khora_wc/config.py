@@ -41,10 +41,32 @@ class Settings(BaseSettings):
     openai_api_key: str
     data_football_token: str = ""
     newsdata_token: str = ""
+    api_football_token: str = ""  # api-sports.io v3 (per-match lineups)
 
     # --- Paths / namespace ----------------------------------------------------
     data_dir: Path = REPO_ROOT / "data"
     namespace_label: str = "worldcup2026"
+
+    # --- Backend selection ----------------------------------------------------
+    # "postgres" = Docker Postgres+pgvector (relational+vector) + Neo4j (graph).
+    # "embedded" = the in-process sqlite_lance store (data/khora/wc.db).
+    # Reads env KHORA_BACKEND; defaults to the Postgres/Neo4j stack.
+    khora_backend: str = "postgres"
+
+    # Postgres (relational + pgvector). Defaults match compose.yaml. The URL is
+    # handed to khora as-is; khora's session layer rewrites the scheme to
+    # postgresql+asyncpg:// for the async driver.
+    # 127.0.0.1 (not "localhost"): localhost resolves to both ::1 (IPv6) and
+    # 127.0.0.1, but the Docker port maps IPv4 only — connections that resolve to
+    # ::1 are refused (Errno 61), which under ingest concurrency intermittently
+    # failed graph/relational writes. Pinning IPv4 makes every connection land.
+    pg_url: str = "postgresql://khora:khora_dev@127.0.0.1:5432/khora"
+
+    # Neo4j graph backend. Defaults match compose.yaml. IPv4-pinned (see pg_url).
+    neo4j_url: str = "bolt://127.0.0.1:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "khora_dev"
+    neo4j_database: str = "neo4j"
 
     # --- Model / embedding configuration -------------------------------------
     khora_llm_model: str = "gpt-4o-mini"
@@ -87,10 +109,19 @@ def get_settings() -> Settings:
 def configure_khora_env(settings: Settings) -> None:
     """Create data dirs and export the KHORA_* / OPENAI_API_KEY env vars.
 
-    Must be called BEFORE constructing ``KhoraConfig`` / ``Khora`` so that the
-    embedded ``sqlite_lance`` backend is selected and pointed at our db path.
+    Must be called BEFORE constructing ``KhoraConfig`` / ``Khora``. Selects the
+    storage backend from ``settings.khora_backend``:
+
+    * ``"postgres"`` (default) — Postgres+pgvector for relational+vector storage
+      plus Neo4j for the graph. Sets ``KHORA_STORAGE_BACKEND=postgres``,
+      ``KHORA_DATABASE_URL`` (relational, also used by the migration runner),
+      the pgvector URL/dimension, and the Neo4j graph URL/credentials. The
+      sqlite_lance env vars are deliberately NOT set.
+    * ``"embedded"`` — the in-process ``sqlite_lance`` store at
+      ``data/khora/wc.db`` (the original fallback backend).
     """
-    # Ensure every directory the app writes to exists.
+    # Ensure every directory the app writes to exists (both backends use these
+    # for inbox/processed/state; only embedded uses the khora db dir).
     for directory in (
         settings.data_dir,
         settings.khora_db_path.parent,
@@ -104,12 +135,30 @@ def configure_khora_env(settings: Settings) -> None:
     # OpenAI key (khora reads the var named by KHORA_LLM_API_KEY_ENV).
     os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 
-    # Embedded sqlite + LanceDB backend selection.
-    os.environ["KHORA_STORAGE_BACKEND"] = "sqlite_lance"
-    os.environ["KHORA_STORAGE_SQLITE_LANCE_DB_PATH"] = str(settings.khora_db_path)
-    os.environ["KHORA_STORAGE_SQLITE_LANCE_EMBEDDING_DIMENSION"] = str(
-        settings.khora_embedding_dimension
-    )
+    if settings.khora_backend == "embedded":
+        # Embedded sqlite + LanceDB backend selection.
+        os.environ["KHORA_STORAGE_BACKEND"] = "sqlite_lance"
+        os.environ["KHORA_STORAGE_SQLITE_LANCE_DB_PATH"] = str(settings.khora_db_path)
+        os.environ["KHORA_STORAGE_SQLITE_LANCE_EMBEDDING_DIMENSION"] = str(
+            settings.khora_embedding_dimension
+        )
+    else:
+        # Postgres+pgvector (relational+vector) + Neo4j (graph) backend.
+        os.environ["KHORA_STORAGE_BACKEND"] = "postgres"
+        # Relational Postgres URL — shortcut consumed both by the store and by
+        # the Alembic migration runner (run_migrations=True).
+        os.environ["KHORA_DATABASE_URL"] = settings.pg_url
+        # pgvector: point it at the same Postgres and pin dimension to 1536
+        # (khora's Postgres path hard-requires 1536 — Vector(1536) columns).
+        os.environ["KHORA_STORAGE_VECTOR_BACKEND"] = "pgvector"
+        os.environ["KHORA_STORAGE_VECTOR_URL"] = settings.pg_url
+        os.environ["KHORA_STORAGE_VECTOR_EMBEDDING_DIMENSION"] = "1536"
+        # Neo4j graph backend.
+        os.environ["KHORA_STORAGE_GRAPH_BACKEND"] = "neo4j"
+        os.environ["KHORA_STORAGE_GRAPH_URL"] = settings.neo4j_url
+        os.environ["KHORA_STORAGE_GRAPH_USER"] = settings.neo4j_user
+        os.environ["KHORA_STORAGE_GRAPH_PASSWORD"] = settings.neo4j_password
+        os.environ["KHORA_STORAGE_GRAPH_DATABASE"] = settings.neo4j_database
 
     # LLM / embedding model selection.
     os.environ["KHORA_LLM_MODEL"] = settings.khora_llm_model

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "FIFA World Cup 2026 knowledge PoC powered by khora"
 requires-python = ">=3.13"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "fastapi>=0.137.1",
     "feedparser>=6.0.12",
     "khora[embedded]>=0.20.0",

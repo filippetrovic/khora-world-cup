@@ -15,7 +15,9 @@ shorter than :data:`ENRICH_THRESHOLD`) and the URL is a real publisher
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from urllib.parse import urlsplit
 
 import httpx
 import trafilatura
@@ -122,13 +124,22 @@ def enrich_body(article: Article, *, client: httpx.Client | None = None) -> bool
         if owns_client:
             client.close()
 
+    return _apply_extraction(article, extracted)
+
+
+def _apply_extraction(article: Article, extracted: str | None) -> bool:
+    """Set ``article.body`` to ``extracted`` if it's a meaningful improvement.
+
+    Shared by the sync and async paths so both honor the same accept rules:
+    extraction must clear ``MIN_BODY_CHARS`` and be strictly longer than the
+    current body (otherwise the existing RSS summary is just as good and we
+    avoid needless churn). Returns ``True`` when the body was replaced.
+    """
     if not extracted or len(extracted) < MIN_BODY_CHARS:
         logger.debug("No usable extraction for %s", article.url)
         return False
 
     current = (article.body or "").strip()
-    # Only replace when the extraction is meaningfully longer; otherwise the
-    # RSS summary is just as good and avoids a needless churn of the body.
     if len(extracted) <= len(current):
         logger.debug(
             "Extraction (%d) not longer than body (%d) for %s",
@@ -148,3 +159,116 @@ def enrich_body(article: Article, *, client: httpx.Client | None = None) -> bool
 def new_enrich_client() -> httpx.Client:
     """An httpx client configured for article-page fetches (caller closes it)."""
     return httpx.Client(timeout=_FETCH_TIMEOUT, headers={"User-Agent": USER_AGENT})
+
+
+# --- async / concurrent enrichment -------------------------------------------
+# Enriching ~2k GDELT URLs one-at-a-time (each a page fetch + trafilatura parse)
+# would take hours. The async path fetches up to ``concurrency`` pages at once
+# behind an asyncio.Semaphore, with a per-domain lock so we never hammer a
+# single publisher with parallel requests. trafilatura's ``extract`` is sync/
+# CPU-bound, so it runs in a thread (``asyncio.to_thread``) to avoid blocking
+# the event loop. This turns hours into minutes for a 2k batch.
+
+# Min seconds between successive requests to the *same* domain (politeness).
+_PER_DOMAIN_DELAY = 0.75
+
+
+def _domain_of(url: str) -> str:
+    """Lowercased host of ``url`` (empty string if unparseable)."""
+    try:
+        return urlsplit(url).netloc.lower()
+    except ValueError:
+        return ""
+
+
+async def _fetch_html_async(url: str, client: httpx.AsyncClient) -> str | None:
+    """Async publisher-page fetch; ``None`` on any network failure (non-fatal).
+
+    Failures are logged at INFO with the publisher *domain* and reason so they
+    surface in the tailable news-fetch log (the bulk GDELT enrich path can hit
+    many paywalls / bot-blocks; seeing which domains fail is useful).
+    """
+    try:
+        resp = await client.get(url, follow_redirects=True)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.info(
+            "Enrichment fetch failed: domain=%s reason=%s", _domain_of(url), exc
+        )
+        return None
+    return resp.text or None
+
+
+async def _enrich_one_async(
+    article: Article,
+    client: httpx.AsyncClient,
+    sem: asyncio.Semaphore,
+    domain_locks: dict[str, asyncio.Lock],
+) -> bool:
+    """Enrich a single article's body in place; never raises.
+
+    Skips already-rich bodies and non-publisher URLs (same gate as the sync
+    path), then fetches + extracts under the global concurrency semaphore and a
+    per-domain lock that spaces same-domain requests by ``_PER_DOMAIN_DELAY``.
+    """
+    if not _needs_enrichment(article) or not _is_publisher_url(article.url):
+        return False
+
+    domain = _domain_of(article.url)
+    lock = domain_locks.setdefault(domain, asyncio.Lock())
+
+    async with sem:
+        async with lock:
+            html = await _fetch_html_async(article.url, client)
+            # Hold the domain lock across the politeness sleep so concurrent
+            # tasks for the same domain queue rather than burst.
+            await asyncio.sleep(_PER_DOMAIN_DELAY)
+        if html is None:
+            return False
+        # trafilatura is CPU-bound and sync — offload so it doesn't block the
+        # event loop while other fetches are in flight.
+        extracted = await asyncio.to_thread(_extract_article, html)
+
+    return _apply_extraction(article, extracted)
+
+
+async def enrich_bodies(
+    articles: list[Article], *, concurrency: int = 12
+) -> int:
+    """Concurrently body-enrich ``articles`` in place; return the count enriched.
+
+    Fetches up to ``concurrency`` publisher pages at once behind a semaphore,
+    with a per-domain lock for politeness, extracting full article text with
+    trafilatura. Each article that needs it and succeeds has its ``body``
+    replaced; failures (paywall, bot-block, timeout, no extraction) leave the
+    title-only body untouched. Never raises — per-URL errors are swallowed.
+
+    This is the bulk path for the GDELT source, where every article arrives
+    body-less and there can be thousands of URLs.
+    """
+    if not articles:
+        return 0
+
+    sem = asyncio.Semaphore(concurrency)
+    domain_locks: dict[str, asyncio.Lock] = {}
+    async with httpx.AsyncClient(
+        timeout=_FETCH_TIMEOUT,
+        headers={"User-Agent": USER_AGENT},
+    ) as client:
+        results = await asyncio.gather(
+            *(
+                _enrich_one_async(a, client, sem, domain_locks)
+                for a in articles
+            ),
+            return_exceptions=True,
+        )
+
+    enriched = 0
+    for result in results:
+        if isinstance(result, BaseException):
+            logger.debug("Async enrich task errored (non-fatal): %s", result)
+            continue
+        if result:
+            enriched += 1
+    logger.info("Async enrich: %d/%d articles enriched", enriched, len(articles))
+    return enriched

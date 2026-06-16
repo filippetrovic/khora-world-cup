@@ -22,7 +22,14 @@ from khora_wc.expertise import ENTITY_TYPES, RELATIONSHIP_TYPES, WC_EXPERTISE
 
 
 def _namespace_state_path(settings: Settings) -> Path:
-    return settings.state_dir / "namespace.json"
+    # Scope the cached namespace UUID to the backend: a namespace created in the
+    # embedded sqlite_lance store is meaningless in a fresh Postgres db (and vice
+    # versa), so each backend keeps its own state file. The legacy unscoped
+    # ``namespace.json`` is kept for the embedded backend to preserve the
+    # existing fallback store's namespace.
+    if settings.khora_backend == "embedded":
+        return settings.state_dir / "namespace.json"
+    return settings.state_dir / f"namespace.{settings.khora_backend}.json"
 
 
 async def _resolve_or_create_namespace(kb: Khora, settings: Settings) -> UUID:
@@ -41,7 +48,16 @@ async def _resolve_or_create_namespace(kb: Khora, settings: Settings) -> UUID:
         except (ValueError, KeyError, json.JSONDecodeError):
             namespace_id = None
         if namespace_id is not None:
-            existing = await kb.get_namespace_by_stable_id(namespace_id)
+            # get_namespace_by_stable_id returns None on some backends but
+            # raises ValueError on others (e.g. Postgres) when the stable id has
+            # no active namespace version — both mean "cached id is stale", so
+            # we fall through to creating a fresh namespace in that case. This
+            # makes the cached state file portable across backends (a UUID
+            # created in the embedded store won't exist in a fresh Postgres db).
+            try:
+                existing = await kb.get_namespace_by_stable_id(namespace_id)
+            except ValueError:
+                existing = None
             if existing is not None:
                 return existing.namespace_id
 

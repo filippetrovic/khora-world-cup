@@ -1,0 +1,79 @@
+# Local dev backend for the khora World Cup app: Postgres (relational + pgvector)
+# and Neo4j (graph). Brought up with `docker compose up -d` and torn down with
+# `docker compose down` (add `-v` to also drop the data volumes).
+#
+# Credentials below are LOCAL DEV ONLY — they are not secrets. The khora_wc
+# config defaults match these values, so `KHORA_BACKEND=postgres` works with no
+# extra env. Override via the matching KHORA_PG_* / KHORA_NEO4J_* env vars.
+
+services:
+  postgres:
+    # pgvector-enabled Postgres 16. khora hardcodes Vector(1536) columns, which
+    # this image's pgvector >= 0.7.0 supports (incl. halfvec).
+    image: pgvector/pgvector:pg16
+    container_name: khora_wc_postgres
+    restart: unless-stopped
+    # Tuned for the bulk re-ingest of a few-thousand-doc corpus (pgvector HNSW
+    # builds + relational writes). Caps RAM so the other local stacks are safe.
+    mem_limit: 2g
+    command:
+      - postgres
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "maintenance_work_mem=384MB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "max_connections=100"
+    environment:
+      POSTGRES_DB: khora
+      POSTGRES_USER: khora
+      POSTGRES_PASSWORD: khora_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - khora_wc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khora -d khora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  neo4j:
+    # Neo4j 5 community. APOC is loaded but optional — khora's graph layer uses
+    # plain Cypher; APOC is included only as a safety net for future Cypher.
+    image: neo4j:5-community
+    container_name: khora_wc_neo4j
+    restart: unless-stopped
+    # Sized for the full-corpus re-ingest (1-2M+ relationships written at
+    # max_concurrent=20). Capped so the other local Neo4j stacks keep their RAM.
+    mem_limit: 5g
+    environment:
+      # auth = neo4j / khora_dev
+      NEO4J_AUTH: neo4j/khora_dev
+      NEO4J_PLUGINS: '["apoc"]'
+      # Heap for write throughput; pagecache to keep the growing graph hot.
+      NEO4J_server_memory_heap_initial__size: 2G
+      NEO4J_server_memory_heap_max__size: 2G
+      NEO4J_server_memory_pagecache_size: 1536M
+    ports:
+      - "7474:7474"  # HTTP browser
+      - "7687:7687"  # Bolt
+    volumes:
+      - khora_wc_neo4jdata:/data
+    healthcheck:
+      # cypher-shell round-trip proves the bolt endpoint + auth are live.
+      test:
+        ["CMD-SHELL", "cypher-shell -u neo4j -p khora_dev 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+volumes:
+  khora_wc_pgdata:
+  khora_wc_neo4jdata:

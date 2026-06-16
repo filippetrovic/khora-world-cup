@@ -64,10 +64,14 @@ Calling `recall`:
 - `recall(query, filter=None)` is your ONLY tool. `query` is a natural-language
   search string; `filter` is an optional JSON object that scopes the search.
 - The filter accepts exactly two keys (both optional):
-  - "source_type": "match" or "news".
-    Use "match" for anything factual: scores, results, fixtures, standings,
-    who plays whom, top scorers. Use "news" for narrative, analysis,
-    storylines, or opinion. Omit it when unsure.
+  - "source_type": "match", "news", or "wiki".
+    Use "match" for structured facts: scores, results, fixtures, standings,
+    who plays whom, top scorers, and TEAM SQUADS / rosters (incl. goalkeepers).
+    Use "news" for narrative, analysis, storylines, injuries, opinion, or
+    "latest"/"recent" questions. Use "wiki" for encyclopedic background:
+    host cities, stadiums/venues, tournament format, group/knockout structure,
+    qualification, team and player background. Omit it when unsure or to search
+    everything (e.g. a question spanning facts + background).
   - "occurred_at": {"$gte": <ISO datetime>, "$lt": <ISO datetime>} — restrict to
     content occurring at/after $gte and strictly before $lt. Either bound may be
     omitted. Values are UTC ISO-8601 strings; a bare date "YYYY-MM-DD" is treated

@@ -3,10 +3,12 @@
 Run with:
     uv run python scripts/fetch_news.py --mode recent --limit 15
     uv run python scripts/fetch_news.py --mode backfill
-    uv run python scripts/fetch_news.py --mode all --limit 100
+    uv run python scripts/fetch_news.py --mode gdelt --limit 2000 --per-window-limit 30
+    uv run python scripts/fetch_news.py --mode all --limit 2000 --per-window-limit 30
 
-Fetches RSS / Google News / NewsData, dedups against ``data/state/news_seen.json``,
-and writes new ``RememberDoc`` JSON files under ``data/inbox/news/<date>/``.
+Fetches GDELT / RSS / Google News / NewsData, dedups against
+``data/state/news_seen.json``, and writes new ``RememberDoc`` JSON files under
+``data/inbox/news/<date>/``.
 """
 
 from __future__ import annotations
@@ -26,10 +28,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch World Cup news into the inbox.")
     parser.add_argument(
         "--mode",
-        choices=("recent", "backfill", "all"),
+        choices=("recent", "backfill", "gdelt", "all"),
         default="recent",
         help="recent: RSS + 7-day Google News (default); "
-        "backfill: weekly Google News windows + NewsData; all: both.",
+        "backfill: weekly Google News windows + NewsData; "
+        "gdelt: bulk GDELT DOC fan-out (May 11->today, async-enriched); "
+        "all: gdelt + recent + backfill (the ~2k path).",
     )
     parser.add_argument(
         "--limit",
@@ -61,10 +65,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    console_level = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(level=console_level, format="%(levelname)s %(name)s: %(message)s")
+    # Pin the console handler's level explicitly. The fetch run lowers the news
+    # package logger to INFO for its file sink (data/logs/news_fetch.log); without
+    # an explicit level the console handler would print those propagated INFO
+    # lines too. Setting it here keeps the console exactly as verbose as -v asked.
+    for handler in logging.getLogger().handlers:
+        handler.setLevel(console_level)
 
     limit = None if args.limit == 0 else args.limit
     per_window_limit = None if args.per_window_limit == 0 else args.per_window_limit

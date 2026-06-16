@@ -64,6 +64,33 @@ DEFAULT_FEEDS: tuple[Feed, ...] = (
     Feed("ESPN", "https://www.espn.com/espn/rss/soccer/news"),
     Feed("Sky Sports", "https://www.skysports.com/rss/12040"),
     Feed("The Guardian", "https://www.theguardian.com/football/rss"),
+    # --- expanded reputable football outlets ---------------------------------
+    # All non-wc_only unless noted: they cover football broadly, so each article
+    # still runs through the World-Cup relevance filter (transform.is_wc_relevant)
+    # before it is written. Names are stable provenance labels for the graph.
+    # Every URL below was verified to return items at build time (2026-06-16);
+    # the handful of outlets without a working public RSS feed (Goal, Bleacher
+    # Report, SI, The Athletic — all JS-gated or deprecated) are intentionally
+    # omitted rather than left as dead entries.
+    Feed("Guardian World Cup 2026",
+         "https://www.theguardian.com/football/world-cup-2026/rss", wc_only=True),
+    Feed("CBS Sports", "https://www.cbssports.com/rss/headlines/soccer/"),
+    Feed("Yahoo Sports", "https://sports.yahoo.com/soccer/rss/"),
+    Feed("Inside World Football", "https://www.insideworldfootball.com/feed/"),
+    Feed("101 Great Goals", "https://www.101greatgoals.com/feed/"),
+    Feed("World Soccer Talk", "https://worldsoccertalk.com/feed/"),
+    Feed("FourFourTwo", "https://www.fourfourtwo.com/feeds/all"),
+    Feed("SB Nation Soccer", "https://www.sbnation.com/rss/soccer/index.xml"),
+    Feed("NYT Soccer", "https://rss.nytimes.com/services/xml/rss/nyt/Soccer.xml"),
+    Feed("Football Italia", "https://football-italia.net/feed/"),
+    Feed("Get Football News France", "https://www.getfootballnewsfrance.com/feed/"),
+    # --- per-nation outlets (non-English bodies still pass the WC filter on
+    # their WC/Mundial terms; provenance labels keep the source nation clear) ---
+    Feed("L'Equipe", "https://dwh.lequipe.fr/api/edito/rss?path=/Football/"),
+    Feed("Marca", "https://e00-marca.uecdn.es/rss/futbol/mundial.xml"),
+    Feed("AS", "https://as.com/rss/futbol/mundial.xml"),
+    Feed("Mundo Deportivo", "https://www.mundodeportivo.com/rss/futbol/mundial.xml"),
+    Feed("Globo Esporte", "https://ge.globo.com/rss/ge/futebol/copa-do-mundo/"),
 )
 
 

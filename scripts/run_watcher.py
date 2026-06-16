@@ -6,6 +6,7 @@ Run a single pass (default) or a continuous watch loop:
     uv run python scripts/run_watcher.py --watch    # poll forever (Ctrl-C to stop)
     uv run python scripts/run_watcher.py --watch --interval 10
     uv run python scripts/run_watcher.py --reingest # replay the WHOLE on-disk corpus
+    uv run python scripts/run_watcher.py --max-concurrent 20  # tune batch parallelism
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from khora_wc.remember.watcher import process_inbox_once, watch_inbox
-from khora_wc.runtime import KhoraRuntime
+from khora_wc.runtime import _BATCH_MAX_CONCURRENT, KhoraRuntime
 
 
 def _parse_args() -> argparse.Namespace:
@@ -44,6 +45,15 @@ def _parse_args() -> argparse.Namespace:
         "including those already in processed/ (they stay put). In --watch "
         "mode this applies to the first pass only.",
     )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=_BATCH_MAX_CONCURRENT,
+        help="in-flight docs per batch handed to remember_batch "
+        f"(default: {_BATCH_MAX_CONCURRENT}). Parallelizes LLM extraction; "
+        "the single-writer SQLite store still serializes the writes, so "
+        "higher is not always faster. Useful values to benchmark: 10/20/50.",
+    )
     return parser.parse_args()
 
 
@@ -65,9 +75,12 @@ async def _run(args: argparse.Namespace) -> None:
                 interval=args.interval,
                 stop_event=stop_event,
                 reingest=args.reingest,
+                max_concurrent=args.max_concurrent,
             )
         else:
-            counts = await process_inbox_once(runtime, reingest=args.reingest)
+            counts = await process_inbox_once(
+                runtime, reingest=args.reingest, max_concurrent=args.max_concurrent
+            )
             print(
                 f"ingested={counts['ingested']} "
                 f"skipped={counts['skipped']} "

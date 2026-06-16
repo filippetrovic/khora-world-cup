@@ -44,6 +44,28 @@ npm --prefix web install             # UI deps
 npm --prefix web run build           # build web/dist (FastAPI serves it at /)
 ```
 
+## Storage backend
+
+khora can run against two backends, selected by the `KHORA_BACKEND` env var:
+
+- **`postgres`** (default) — Postgres + pgvector (relational + vector) and Neo4j
+  (graph), brought up locally with Docker via `compose.yaml`.
+- **`embedded`** — the zero-infra, in-process `sqlite_lance` store at
+  `data/khora/wc.db` (kept as a fallback; each backend keeps its own namespace
+  state file under `data/state/`).
+
+```bash
+docker compose up -d     # start Postgres (5432) + Neo4j (7474 http / 7687 bolt)
+docker compose ps        # wait until both report (healthy)
+docker compose down      # stop (add -v to also drop the data volumes)
+```
+
+Local dev credentials are baked into `compose.yaml` (`khora` / `khora_dev`) and
+matched by defaults in `khora_wc/config.py`, so `KHORA_BACKEND=postgres` works
+with no extra env. The Postgres path pins the embedding dimension to 1536
+(`text-embedding-3-small`), which khora's pgvector schema requires. Use
+`KHORA_BACKEND=embedded` to fall back to the SQLite store.
+
 ## Quickstart (end to end)
 
 ```bash
