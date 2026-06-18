@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RecallCall, RecallParams } from "../lib/types";
+import type { RecallCall, RecallParams, SourceDocument } from "../lib/types";
 import { Chip } from "./Chip";
 import { ScoreBar } from "./ScoreBar";
 import { fmtMs, fmtDateTime, fmtDate, shortId } from "../lib/format";
@@ -57,6 +57,10 @@ export function RecallTrace({ trace }: Props) {
 }
 
 function CallBlock({ call, index }: { call: RecallCall; index: number }) {
+  // Each recall call collapses independently, just like the parent "What khora
+  // returned" panel. Collapsed by default to keep multi-call traces scannable.
+  const [open, setOpen] = useState(false);
+
   const r = call.result ?? {
     chunks: [],
     entities: [],
@@ -77,20 +81,48 @@ function CallBlock({ call, index }: { call: RecallCall; index: number }) {
   const resolveEndpoint = (name: string | null | undefined, id: string | null) =>
     name || (id && nameById.get(id)) || shortId(id);
 
+  // chunk.document_id is a foreign key into this call's documents list, so build
+  // an id→document map to render each chunk's source as a clickable doc name.
+  const docById = new Map<string, SourceDocument>();
+  for (const d of r.documents ?? []) {
+    if (d.id) docById.set(d.id, d);
+  }
+
+  const nChunks = r.chunks?.length ?? 0;
+  const nEntities = r.entities?.length ?? 0;
+  const nRels = r.relationships?.length ?? 0;
+  const nDocs = r.documents?.length ?? 0;
+
   return (
     <div className="overflow-hidden rounded-xl border border-pitch-800/60 bg-pitch-950/40">
-      <div className="flex items-center justify-between gap-2 border-b border-pitch-800/60 bg-pitch-900/40 px-4 py-2.5">
-        <span className="flex items-center gap-2 text-xs font-semibold text-pitch-200">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-2 bg-pitch-900/40 px-4 py-2.5 text-left transition hover:bg-pitch-900/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/40 ${
+          open ? "border-b border-pitch-800/60" : ""
+        }`}
+      >
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-pitch-200">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gold-500/20 text-[11px] text-gold-200">
             {index + 1}
           </span>
           recall call
+          <span className="font-normal text-pitch-400/80">
+            {nChunks} chunks · {nEntities} entities · {nRels} rels · {nDocs} docs
+          </span>
         </span>
-        <Chip tone="muted" title="Latency of this single recall call">
-          {fmtMs(call.latency_ms)}
-        </Chip>
-      </div>
+        <span className="flex shrink-0 items-center gap-2">
+          <Chip tone="muted" title="Latency of this single recall call">
+            {fmtMs(call.latency_ms)}
+          </Chip>
+          <ChevronIcon
+            className={`h-4 w-4 shrink-0 text-pitch-400 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </span>
+      </button>
 
+      {open && (
       <div className="space-y-4 p-4">
         <ParamRow params={call.params} />
 
@@ -99,27 +131,42 @@ function CallBlock({ call, index }: { call: RecallCall; index: number }) {
             <Empty>No chunks returned.</Empty>
           ) : (
             <ul className="space-y-2.5">
-              {r.chunks.map((c, ci) => (
-                <li
-                  key={ci}
-                  className="rounded-lg border border-pitch-800/60 bg-pitch-900/40 p-3"
-                >
-                  <p className="text-sm leading-relaxed text-pitch-100">{c.content}</p>
-                  <div className="mt-2 flex items-center gap-3">
-                    <ScoreBar score={c.score} label="chunk score" className="flex-1" />
-                    {c.occurred_at && (
-                      <span className="shrink-0 text-[11px] text-pitch-400/80" title="occurred_at">
-                        {fmtDateTime(c.occurred_at)}
-                      </span>
-                    )}
-                  </div>
-                  {c.document_id && (
-                    <div className="mt-1.5 font-mono text-[10px] text-pitch-500/80" title="document_id">
-                      doc {shortId(c.document_id)}
+              {r.chunks.map((c, ci) => {
+                const doc = c.document_id ? docById.get(c.document_id) : undefined;
+                return (
+                  <li
+                    key={ci}
+                    className="rounded-lg border border-pitch-800/60 bg-pitch-900/40 p-3"
+                  >
+                    <p className="text-sm leading-relaxed text-pitch-100">{c.content}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <ScoreBar score={c.score} label="chunk score" className="flex-1" />
+                      {c.occurred_at && (
+                        <span className="shrink-0 text-[11px] text-pitch-400/80" title="occurred_at">
+                          {fmtDateTime(c.occurred_at)}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </li>
-              ))}
+                    {c.document_id && (
+                      <div className="mt-1.5 text-[11px]">
+                        {doc ? (
+                          <span className="inline-flex items-center gap-1 text-pitch-400/80">
+                            <span className="text-pitch-500/80">doc:</span>
+                            <DocTitleLink doc={doc} />
+                          </span>
+                        ) : (
+                          <span
+                            className="font-mono text-[10px] text-pitch-500/80"
+                            title={`document_id: ${c.document_id}`}
+                          >
+                            doc {shortId(c.document_id)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Subsection>
@@ -192,21 +239,7 @@ function CallBlock({ call, index }: { call: RecallCall; index: number }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      {d.source_url ? (
-                        <a
-                          href={d.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 font-medium text-gold-200 hover:text-gold-100 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/40"
-                        >
-                          {d.title ?? d.source_url}
-                          <ExternalIcon className="h-3 w-3 shrink-0" />
-                        </a>
-                      ) : (
-                        <span className="font-medium text-pitch-100">
-                          {d.title ?? "Untitled source"}
-                        </span>
-                      )}
+                      <DocTitleLink doc={d} />
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-pitch-400/80">
                         {d.source_name && <span>{d.source_name}</span>}
                         {d.source_type && (
@@ -222,6 +255,14 @@ function CallBlock({ call, index }: { call: RecallCall; index: number }) {
                           </>
                         )}
                       </div>
+                      {d.id && (
+                        <div
+                          className="mt-1.5 font-mono text-[10px] text-pitch-500/80 break-all"
+                          title="khora document id"
+                        >
+                          id {d.id}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </li>
@@ -230,8 +271,30 @@ function CallBlock({ call, index }: { call: RecallCall; index: number }) {
           )}
         </Subsection>
       </div>
+      )}
     </div>
   );
+}
+
+// A document's title rendered as a link to its source_url (with an external-link
+// glyph), or plain text when no url. Shared by the Chunks footer and the Source
+// documents list so a chunk's source reads identically to the documents list.
+function DocTitleLink({ doc }: { doc: SourceDocument }) {
+  const label = doc.title ?? doc.source_url ?? "Untitled source";
+  if (doc.source_url) {
+    return (
+      <a
+        href={doc.source_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 font-medium text-gold-200 hover:text-gold-100 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/40"
+      >
+        {label}
+        <ExternalIcon className="h-3 w-3 shrink-0" />
+      </a>
+    );
+  }
+  return <span className="font-medium text-pitch-100">{label}</span>;
 }
 
 // The row of param badges showing exactly how the agent queried khora.

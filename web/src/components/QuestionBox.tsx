@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 interface Props {
   value: string;
@@ -17,7 +17,18 @@ const EXAMPLES = [
 
 // The single, prominent question field + seeded example chips.
 export function QuestionBox({ value, onChange, onSubmit, loading, disabled }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the textarea to fit its content (height only — width is fixed by the
+  // flex layout). Reset to "auto" first so it also shrinks when text is deleted.
+  // Runs on every value change, so programmatic sets (example chips, clear on
+  // submit) resize too. A max-height in the className caps it and scrolls beyond.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -46,17 +57,17 @@ export function QuestionBox({ value, onChange, onSubmit, loading, disabled }: Pr
         </label>
         <div className="flex items-center gap-2 rounded-2xl border border-pitch-700/70 bg-pitch-900/70 p-2 pl-5 shadow-2xl shadow-black/30 backdrop-blur transition focus-within:border-gold-400/60 focus-within:ring-2 focus-within:ring-gold-400/30">
           <SearchIcon className="h-5 w-5 shrink-0 text-pitch-400" />
-          <input
+          <textarea
             id="question"
             ref={inputRef}
-            type="text"
+            rows={1}
             autoComplete="off"
             placeholder="Ask anything about the World Cup 2026…"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled}
-            className="min-w-0 flex-1 bg-transparent py-2.5 text-base text-pitch-50 placeholder:text-pitch-400/70 focus:outline-none disabled:opacity-60"
+            className="block max-h-48 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-base leading-relaxed text-pitch-50 placeholder:text-pitch-400/70 focus:outline-none disabled:opacity-60"
           />
           <button
             type="submit"

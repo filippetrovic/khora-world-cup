@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     khora_llm_model: str = "gpt-4o-mini"
     khora_embedding_model: str = "text-embedding-3-small"
     khora_embedding_dimension: int = 1536
+    # Read-side answer agent model. Override per-environment with ANSWER_MODEL in
+    # .env (case-insensitive); the committed default stays fast/cheap.
     answer_model: str = "gpt-4o-mini"
 
     # --- Derived path properties ---------------------------------------------

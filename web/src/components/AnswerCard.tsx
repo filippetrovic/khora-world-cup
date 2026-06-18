@@ -1,5 +1,6 @@
 import type { AskResponse } from "../lib/types";
 import { MetricsStrip } from "./MetricsStrip";
+import { Markdown } from "./Markdown";
 
 interface Props {
   data: AskResponse;
@@ -44,15 +45,19 @@ export function AnswerCard({ data }: Props) {
             <p className="text-lg font-medium text-pitch-100">
               khora didn't find that in its sources.
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-pitch-300/90">{data.answer}</p>
+            <Markdown
+              content={data.answer}
+              className="mt-2 text-sm leading-relaxed text-pitch-300/90"
+            />
             <p className="mt-3 text-xs text-pitch-400/70">
               Try a question about a specific match, group, top scorers, or recent news.
             </p>
           </div>
         ) : (
-          <p className="whitespace-pre-line text-lg leading-relaxed text-pitch-50 sm:text-xl">
-            {data.answer}
-          </p>
+          <Markdown
+            content={data.answer}
+            className="text-lg leading-relaxed text-pitch-50 sm:text-xl"
+          />
         )}
       </div>
 

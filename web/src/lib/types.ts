@@ -55,6 +55,9 @@ export interface Relationship {
 }
 
 export interface SourceDocument {
+  // khora's internal document id — the FK target of Chunk.document_id, used to
+  // link a chunk back to its source document in the UI.
+  id: string | null;
   title: string | null;
   source_type: string | null;
   source_name: string | null;

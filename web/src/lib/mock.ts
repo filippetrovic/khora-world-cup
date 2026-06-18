@@ -106,6 +106,8 @@ export const MOCK_ANSWER: AskResponse = {
         ],
         documents: [
           {
+            // id matches chunks[0].document_id → chunk shows a clickable doc name.
+            id: "f1c2e3a4-1111-2222-3333-444455556666",
             title: "Mexico 2–1 Canada — Match Report",
             source_type: "match",
             source_name: "football-data.org",
@@ -114,6 +116,8 @@ export const MOCK_ANSWER: AskResponse = {
             external_id: "match:fd:537327",
           },
           {
+            // id matches chunks[1].document_id (chunks[2] has no doc → id fallback).
+            id: "a7b8c9d0-2222-3333-4444-555566667777",
             title: "Group A — Standings & Results",
             source_type: "standings",
             source_name: "football-data.org",
@@ -152,6 +156,8 @@ export const MOCK_ANSWER: AskResponse = {
         relationships: [],
         documents: [
           {
+            // id matches chunks[0].document_id in this call.
+            id: "d4e5f6a7-4444-5555-6666-777788889999",
             title: "Hosts Mexico open World Cup 2026 with a statement win",
             source_type: "news",
             source_name: "Reuters",

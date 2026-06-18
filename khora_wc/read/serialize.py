@@ -85,6 +85,7 @@ def recall_result_to_dict(result: RecallResult, *, max_items: int = 12) -> dict:
 
     documents = [
         {
+            "id": _str_or_none(doc.id),
             "title": doc.title,
             "source_type": doc.source_type,
             "source_name": doc.source_name,
